@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>My AI Assistant</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f0f0; margin:0; padding:0; }
+        header { background: #4a90e2; color:white; padding: 15px; text-align: center; font-size: 24px; }
+        #statusArea { max-width: 700px; margin: 20px auto 0; background:#fff; padding:10px 20px; border-radius:8px; box-shadow:0 0 10px rgba(0,0,0,0.1);}
+        #chat { max-width: 700px; margin: 10px auto; background:white; padding: 20px; border-radius:8px; height:400px; overflow-y:auto; box-shadow:0 0 10px rgba(0,0,0,0.1);}
+        .user { color:#333; background:#d1e7ff; padding:10px; margin:5px 0; border-radius:5px; }
+        .assistant { color:#fff; padding:10px; margin:5px 0; border-radius:5px; }
+        .assistant.meeting { background:#4a90e2; }
+        .assistant.order { background:#f39c12; }
+        .assistant.food { background:#27ae60; }
+        .assistant.unknown { background:#95a5a6; }
+        #inputArea { max-width:700px; margin:10px auto; display:flex; }
+        #messageInput { flex:1; padding:10px; border-radius:5px; border:1px solid #ccc; }
+        #sendBtn { padding:10px 20px; margin-left:10px; border:none; border-radius:5px; background:#4a90e2; color:white; cursor:pointer; }
+        #sendBtn:hover { background:#357ABD; }
+        .extracted { font-size:12px; color:#555; margin-left:5px; }
+    </style>
+</head>
+<body>
+    <header>My AI Assistant - Type command...</header>
+    <div id="statusArea"></div>
+    <div id="chat"></div>
+    <div id="inputArea">
+        <input type="text" id="messageInput" placeholder="Type command..." />
+        <button id="sendBtn">Send</button>
+    </div>
+
+    <script>
+        const chat = document.getElementById("chat");
+        const messageInput = document.getElementById("messageInput");
+        const sendBtn = document.getElementById("sendBtn");
+
+        function appendMessage(sender, msg, extracted=null, type=null){
+            const div = document.createElement("div");
+            div.className = sender;
+            if(sender==="assistant" && type) div.classList.add(type);
+            div.textContent = msg;
+            if(extracted){
+                const span = document.createElement("span");
+                span.className = "extracted";
+                span.textContent = `[Extracted result: ${JSON.stringify(extracted)}]`;
+                div.appendChild(span);
+            }
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        async function sendMessage(){
+            const msg = messageInput.value.trim();
+            if(!msg) return;
+            appendMessage("user", msg);
+            messageInput.value = "";
+            try{
+                const res = await fetch("/send_message", {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json"},
+                    body: JSON.stringify({message: msg})
+                });
+                if(!res.ok) throw new Error(`Server returned ${res.status}`);
+                const data = await res.json();
+                data.responses.forEach((resp,i)=>{
+                    appendMessage("assistant", resp, data.result[i], data.result[i].type);
+                });
+            } catch(err){
+                appendMessage("assistant", `Error sending message: ${err}`, null, "unknown");
+                console.error(err);
+            }
+        }
+
+        async function checkStatus(){
+            try{
+                const res = await fetch("/status");
+                if(!res.ok) throw new Error(`Server returned ${res.status}`);
+                const data = await res.json();
+                let statusHtml = "<strong>Task Status:</strong><br>";
+                for(const task in data){
+                    statusHtml += `${task}: ${data[task]}<br>`;
+                }
+                document.getElementById("statusArea").innerHTML = statusHtml;
+            } catch(err){
+                console.error("Error fetching status:", err);
+            }
+        }
+
+        sendBtn.addEventListener("click", sendMessage);
+        messageInput.addEventListener("keypress", e=>{
+            if(e.key==="Enter") sendMessage();
+        });
+
+        // Check status every 5 sec without stacking
+        setInterval(checkStatus,5000);
+        checkStatus(); // Initial load
+    </script>
+</body>
+</html>
